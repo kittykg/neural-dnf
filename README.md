@@ -1,18 +1,26 @@
 # Neural DNF-based Models
 
-Neural DNF-based models, using semi-symbolic layers based on pix2rule's vanilla
-neural DNF model [1].
+A collection of neural DNF-based models based on semi-symbolic layers introduced
+in the pix2rule [1].
 
-We also include the extended model neural DNF-EO (NDNF-EO) from [2].
+## Models
 
-Our new model: neural DNF with mutex-tanh activation (NDNF-MT) model is
-implemented as class `NeuralDNFMutexTanh` in `neural_ndnf/neural_dnf.py` .
+The following models are implemented in `neural_ndnf/neural_dnf.py`:
 
-The mutex-tanh activation is implemented as a function `mutex_tanh(...)` in
-`neural_ndnf/common.py` .
+**Neural DNF** (`NeuralDNF`): The vanilla neural DNF model from pix2rule [1],
+consisting of a conjunctive semi-symbolic layer and a disjunctive neural layer,
+both with tanh activation.
 
-The semi-symbolic layer with mutex-tanh activation is implemented as class
-`SemiSymbolicMutexTanh` in `neural_ndnf/semi_symbolic.py` .
+**Neural DNF-EO** (`NeuralDNFEO`): An extension of the neural DNF model from
+[2], with a frozen conjunctive layer as a constraint layer after the disjunctive
+layer.
+
+**Neural DNF-MT** (`NeuralDNFMutexTanh`): Our new model introduced in the paper
+[3], consisting of a conjunctive semi-symbolic layer with tanh activation and a
+disjunctive neural layer with the mutex-tanh activation (implemented as a
+function `mutex_tanh(...)` in `neural_ndnf/common.py`). The semi-symbolic layer
+with mutex-tanh activation is implemented as class `SemiSymbolicMutexTanh` in
+`neural_ndnf/semi_symbolic.py` .
 
 ## How to Use
 
@@ -33,27 +41,25 @@ project:
 python -m unittest discover -p "*_test.py"
 ```
 
-## TODOs
-
-* README.md: Add structure section
-
-* Add testing for `SemiSymbolicMutexTanh`
-
-* Add testing for `NDNF-MT`
-
 ## References
 
 [1] Cingillioglu, N., & Russo, A. (2021). pix2rule: End-to-end Neuro-symbolic
 Rule Learning. In A. S. D. Garcez & E. Jiménez-Ruiz (Eds.), Proceedings of the
 15th International Workshop on Neural-Symbolic Learning and Reasoning as part of
-the 1st International Joint Conference on Learning & Reasoning (IJCLR 2021), 
+the 1st International Joint Conference on Learning & Reasoning (IJCLR 2021),
 Virtual conference, October 25-27, 2021 (pp. 15–56). Retrieved from
 https://ceur-ws.org/Vol-2986/paper3.pdf
 
 [2] Baugh, K. G., Cingillioglu, N., & Russo, A. (2023). Neuro-symbolic Rule
 Learning in Real-world Classification Tasks. In A. Martin, H.-G. Fill, A.
-Gerber, K. Hinkelmann, D. Lenat, R. Stolle, & F. van Harmelen (Eds.), 
+Gerber, K. Hinkelmann, D. Lenat, R. Stolle, & F. van Harmelen (Eds.),
 Proceedings of the AAAI 2023 Spring Symposium on Challenges Requiring the
-Combination of Machine Learning and Knowledge Engineering (AAAI-MAKE 2023), 
+Combination of Machine Learning and Knowledge Engineering (AAAI-MAKE 2023),
 Hyatt Regency, San Francisco Airport, California, USA, March 27-29, 2023.
 Retrieved from https://ceur-ws.org/Vol-3433/paper12.pdf
+
+[3] Kexin Gu Baugh, Luke Dickens, and Alessandra Russo. 2025. Neural DNF-MT: A
+Neuro-symbolic Approach for Learning Interpretable and Editable Policies. In
+Proc. of the 24th International Conference on Autonomous Agents and Multiagent
+Systems (AAMAS 2025), Detroit, Michigan, USA, May 19 – 23, 2025, IFAAMAS.
+Arxiv pre-print: https://arxiv.org/abs/2501.03888
