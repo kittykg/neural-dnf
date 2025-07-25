@@ -1,9 +1,12 @@
 from enum import Enum
+from typing import Callable
 
 import torch
 from torch import nn, Tensor
 
 from neural_dnf.common import mutex_tanh
+
+WEIGHT_INIT_TYPES = ["normal", "x_normal", "x_uniform", "orthogonal", "uniform"]
 
 
 class SemiSymbolicLayerType(Enum):
@@ -46,29 +49,33 @@ class BaseSemiSymbolic(nn.Module):
 
         self.weights = nn.Parameter(
             torch.empty((self.out_features, self.in_features))
-        )  # type: ignore
+        )
 
-        assert weight_init_type in [
-            "normal",
-            "x_normal",
-            "x_uniform",
-            "uniform",
-        ], f"Invalid weight_init_type: {weight_init_type}"
+        assert (
+            weight_init_type in WEIGHT_INIT_TYPES
+        ), f"Invalid weight_init_type: {weight_init_type}"
         self.weight_init_type = weight_init_type
+        layer_init_fn = self._get_layer_init_fn()
+        layer_init_fn(self.weights)
+        self.delta = delta
+
+    def _get_layer_init_fn(self) -> Callable[[nn.Parameter], Tensor]:
         if self.weight_init_type == "normal":
-            nn.init.normal_(self.weights, mean=0.0, std=0.1)
+            return lambda x: nn.init.normal_(x, mean=0.0, std=0.1)
         elif self.weight_init_type == "x_normal":
-            nn.init.xavier_normal_(
-                self.weights, gain=nn.init.calculate_gain("tanh")
+            return lambda x: nn.init.xavier_normal_(
+                x, gain=nn.init.calculate_gain("tanh")
             )
         elif self.weight_init_type == "x_uniform":
-            nn.init.xavier_uniform_(
-                self.weights, gain=nn.init.calculate_gain("tanh")
+            return lambda x: nn.init.xavier_uniform_(
+                x, gain=nn.init.calculate_gain("tanh")
+            )
+        elif self.weight_init_type == "orthogonal":
+            return lambda x: nn.init.orthogonal_(
+                x, gain=nn.init.calculate_gain("tanh")  # type: ignore
             )
         else:
-            nn.init.uniform_(self.weights, a=-6, b=6)
-
-        self.delta = delta
+            return lambda x: nn.init.uniform_(x, a=-6, b=6)
 
     def extra_repr(self) -> str:
         return ", ".join(
@@ -82,10 +89,8 @@ class BaseSemiSymbolic(nn.Module):
 
     def forward(self, input: Tensor) -> Tensor:
         # Input: N x P
-        abs_weight = torch.abs(self.weights)
-        # abs_weight: Q x P
 
-        bias = self._bias_calculation(abs_weight)
+        bias = self.bias_calculation()
         # bias: Q
 
         out = input @ self.weights.T
@@ -96,7 +101,8 @@ class BaseSemiSymbolic(nn.Module):
         # sum: N x Q
         return sum
 
-    def _bias_calculation(self, abs_weight: Tensor) -> Tensor:
+    def bias_calculation(self) -> Tensor:
+        abs_weight = torch.abs(self.weights)
         # abs_weight: Q x P
         max_abs_w = torch.max(abs_weight, dim=1)[0]
         # max_abs_w: Q

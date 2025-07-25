@@ -3,7 +3,7 @@ import sys
 from typing import overload
 
 import torch
-from torch import nn, Tensor
+from torch import Tensor
 
 file = Path(__file__).resolve()
 parent, root = file.parent, file.parents[2]
@@ -17,7 +17,7 @@ except ValueError:  # Already removed
 from neural_dnf.semi_symbolic import *
 
 
-class BaseNeuralDNF(nn.Module):
+class BaseNeuralDNF(torch.nn.Module):
     """
     The base class of neural DNF modules. It contains the common functions.
     This should not be directly used / imported, but for type hinting purposes.
@@ -39,8 +39,8 @@ class BaseNeuralDNF(nn.Module):
 
     def __init__(
         self,
-        num_preds: int,
-        num_conjuncts: int,
+        n_in: int,
+        n_conjunctions: int,
         n_out: int,
         delta: float,
         weight_init_type: str = "normal",
@@ -48,15 +48,15 @@ class BaseNeuralDNF(nn.Module):
         super(BaseNeuralDNF, self).__init__()
 
         self.conjunctions = self.conjunction_semi_symbolic_layer_type(
-            in_features=num_preds,  # P
-            out_features=num_conjuncts,  # Q
+            in_features=n_in,  # P
+            out_features=n_conjunctions,  # Q
             layer_type=SemiSymbolicLayerType.CONJUNCTION,
             delta=delta,
             weight_init_type=weight_init_type,
         )  # weight: Q x P
 
         self.disjunctions = self.disjunction_semi_symbolic_layer_type(
-            in_features=num_conjuncts,  # Q
+            in_features=n_conjunctions,  # Q
             out_features=n_out,  # R
             layer_type=SemiSymbolicLayerType.DISJUNCTION,
             delta=delta,
@@ -70,12 +70,18 @@ class BaseNeuralDNF(nn.Module):
         # Input: N x P
         conj = self.conjunctions(input)
         # conj: N x Q
-        conj = nn.Tanh()(conj)
+        conj = torch.tanh(conj)
         # conj: N x Q
         disj = self.disjunctions(conj)
         # disj: N x R
 
         return disj
+
+    def get_conjunction(self, x: Tensor) -> Tensor:
+        """
+        Return the activation of the conjunctive layer
+        """
+        return torch.tanh(self.conjunctions(x))
 
     def get_delta_val(self) -> list[float]:
         """
@@ -137,15 +143,13 @@ class NeuralDNF(BaseNeuralDNF):
 
     def __init__(
         self,
-        num_preds: int,
-        num_conjuncts: int,
+        n_in: int,
+        n_conjunctions: int,
         n_out: int,
         delta: float,
         weight_init_type: str = "normal",
     ) -> None:
-        super().__init__(
-            num_preds, num_conjuncts, n_out, delta, weight_init_type
-        )
+        super().__init__(n_in, n_conjunctions, n_out, delta, weight_init_type)
 
 
 class NeuralDNFEO(BaseNeuralDNF):
@@ -166,15 +170,13 @@ class NeuralDNFEO(BaseNeuralDNF):
 
     def __init__(
         self,
-        num_preds: int,
-        num_conjuncts: int,
+        n_in: int,
+        n_conjunctions: int,
         n_out: int,
         delta: float,
         weight_init_type: str = "normal",
     ) -> None:
-        super().__init__(
-            num_preds, num_conjuncts, n_out, delta, weight_init_type
-        )
+        super().__init__(n_in, n_conjunctions, n_out, delta, weight_init_type)
 
         self.eo_constraint = SemiSymbolic(
             in_features=n_out,  # R
@@ -190,12 +192,15 @@ class NeuralDNFEO(BaseNeuralDNF):
     def forward(self, input: Tensor) -> Tensor:
         disj = super().forward(input)
         # disj: N x R
-        disj = nn.Tanh()(disj)
+        disj = torch.tanh(disj)
         # disj: N x R
         out = self.eo_constraint(disj)
         # out: N x R
 
         return out
+
+    def get_plain_output(self, x: Tensor) -> Tensor:
+        return super().forward(x)
 
     def get_delta_val(self) -> list[float]:
         conj_delta = self.conjunctions.delta
@@ -230,8 +235,8 @@ class NeuralDNFEO(BaseNeuralDNF):
         assert self.check_delta(), "Delta values are not the same."
 
         ndnf = NeuralDNF(
-            num_preds=self.conjunctions.in_features,
-            num_conjuncts=self.conjunctions.out_features,
+            n_in=self.conjunctions.in_features,
+            n_conjunctions=self.conjunctions.out_features,
             n_out=self.disjunctions.out_features,
             delta=self.get_delta_val()[0],
         )
@@ -263,16 +268,14 @@ class BaseNeuralDNFMutexTanh(BaseNeuralDNF):
 
     def __init__(
         self,
-        num_preds: int,
-        num_conjuncts: int,
+        n_in: int,
+        n_conjunctions: int,
         n_out: int,
         delta: float,
         weight_init_type: str = "normal",
         c: float | None = None,
     ) -> None:
-        super().__init__(
-            num_preds, num_conjuncts, n_out, delta, weight_init_type
-        )
+        super().__init__(n_in, n_conjunctions, n_out, delta, weight_init_type)
         self.c = c
 
     def get_raw_output(self, x: Tensor) -> Tensor:
@@ -296,8 +299,8 @@ class BaseNeuralDNFMutexTanh(BaseNeuralDNF):
         """
         assert self.check_delta(), "Delta values are not the same."
         ndnf = NeuralDNF(
-            num_preds=self.conjunctions.in_features,
-            num_conjuncts=self.conjunctions.out_features,
+            n_in=self.conjunctions.in_features,
+            n_conjunctions=self.conjunctions.out_features,
             n_out=self.disjunctions.out_features,
             delta=self.get_delta_val()[0],
         )
@@ -321,7 +324,7 @@ class NeuralDNFMutexTanh(BaseNeuralDNFMutexTanh):
     def get_raw_output(self, x: Tensor) -> Tensor:
         conj = self.conjunctions(x)
         # conj: N x Q
-        conj = nn.Tanh()(conj)
+        conj = torch.tanh(conj)
         # conj: N x Q
         disj = self.disjunctions.get_raw_output(conj)
         # disj: N x R
@@ -330,7 +333,7 @@ class NeuralDNFMutexTanh(BaseNeuralDNFMutexTanh):
     def get_all_forms(self, x: Tensor) -> dict[str, dict[str, Tensor]]:
         conj_raw = self.conjunctions(x)
         # conj_raw: N x Q
-        tanh_conj = nn.Tanh()(conj_raw)
+        tanh_conj = torch.tanh(conj_raw)
 
         disj_raw = self.disjunctions.get_raw_output(tanh_conj)
         # disj_raw: N x R

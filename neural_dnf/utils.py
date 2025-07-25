@@ -1,6 +1,6 @@
 from pathlib import Path
 import sys
-from typing import overload
+from typing import overload, Callable
 
 file = Path(__file__).resolve()
 parent, root = file.parent, file.parents[2]
@@ -211,10 +211,11 @@ class DeltaDelayedOffsetExponentialDecayScheduler(DeltaDelayedDecayScheduler):
     """
     This scheduler is the same as DeltaDelayedExponentialDecayScheduler, except
     that the delta start to be 0 and the after `delta_decay_delay` steps, the
-    delta is then set to be the initial delta.
+    delta is then set to be the offset initial delta.
 
     To construct a decay scheduler, the following parameters are needed:
-    - initial_delta: the initial delta value
+    - initial_delta: the initial delta value, usually 0
+    - offset_initial_delta: the initial delta value after the offset
     - delta_decay_delay: the number of steps before the decay starts
     - delta_decay_steps: the number of steps before the decay rate is applied
     - delta_decay_rate: the decay rate
@@ -224,12 +225,34 @@ class DeltaDelayedOffsetExponentialDecayScheduler(DeltaDelayedDecayScheduler):
         name of the module.
     """
 
+    initial_delta: float
+    offset_initial_delta: float
+
+    def __init__(
+        self,
+        initial_delta: float,
+        offset_initial_delta: float,
+        delta_decay_delay: int,
+        delta_decay_steps: int,
+        delta_decay_rate: float,
+        target_module_type: str,
+    ):
+        super().__init__(
+            initial_delta,
+            delta_decay_delay,
+            delta_decay_steps,
+            delta_decay_rate,
+            target_module_type,
+        )
+        self.offset_initial_delta = offset_initial_delta
+
     def _calculate_new_delta(self, step: int) -> float:
         # `step` should be 0-indexed
         if step < self.delta_decay_delay:
             return 0.0
         step_diff = step - self.delta_decay_delay
-        new_delta_val = self.initial_delta * (
+        # We use the offset initial delta to calculate the new delta value
+        new_delta_val = self.offset_initial_delta * (
             self.delta_decay_rate ** (step_diff // self.delta_decay_steps + 1)
         )
         return new_delta_val
@@ -237,7 +260,7 @@ class DeltaDelayedOffsetExponentialDecayScheduler(DeltaDelayedDecayScheduler):
 
 class DeltaDelayedLinearDecayScheduler(DeltaDelayedDecayScheduler):
     """
-    This scheduler's `derta_decay_rate` should be a value that's between 0 and 1
+    This scheduler's `delta_decay_rate` should be a value that's between 0 and 1
     and after `delta_decay_delay` steps, the delta is then set to be the initial
     delta plus the decay rate for every `delta_decay_steps` steps.
 
@@ -283,12 +306,76 @@ class DeltaDelayedLinearDecayScheduler(DeltaDelayedDecayScheduler):
         return new_delta_val
 
 
-class DeltaDelayedMonitoringExponentialDecayScheduler(
-    DeltaDelayedDecayScheduler
-):
+class DeltaDelayedMonotonicFunctionScheduler(DeltaDelayedDecayScheduler):
     """
-    This scheduler only update the delta then the target performance is reached.
-    Caution: under this scheduler the delta might never reach 1.
+    This scheduler is uses f(t) = g(t) / g(1), with 2 options of g(t):
+    1. g(t) = \frac{t^2}{2} - \frac{t^3}{3}
+    2. g(t) = \frac{t^5}{5} - \frac{t^4}{2} + \frac{t^3}{3}
+    t = 0 if step < delta_decay_delay, and when step >= delta_decay_delay,
+    t = max(1, (step - delta_decay_delay) // delta_decay_steps / delta_decay_rate)
+
+    To construct a decay scheduler, the following parameters are needed:
+    - initial_delta: manually set to 0.0, not used
+    - delta_decay_delay: the number of steps before the decay starts
+    - delta_decay_steps: the number of steps before the decay rate is applied
+    - delta_decay_rate: the number to scale the t value. The larger the number,
+        the slower the delta value will increase. Should be greater than 1.
+    - target_module_type: the class name of the target module. Can be either a
+        full module that inherits `BaseNeuralDNF` module, or a layer that
+        inherits `SemiSymbolic`. Use module.__class__.__name__ to get the class
+        name of the module.
+    """
+
+    use_first_option: bool
+    func_g: Callable[[float], float]
+
+    def __init__(
+        self,
+        initial_delta: float,  # not used
+        delta_decay_delay: int,
+        delta_decay_steps: int,
+        delta_decay_rate: float,
+        target_module_type: str,
+        use_first_option: bool = True,
+    ):
+        super().__init__(
+            0.0,
+            delta_decay_delay,
+            delta_decay_steps,
+            delta_decay_rate,
+            target_module_type,
+        )
+        assert self.delta_decay_rate > 1, (
+            "Decay rate should be greater than 1 for the monotonic function "
+            "scheduler."
+        )
+        self.use_first_option = use_first_option
+        self.func_g = lambda t: (
+            (t**2) / 2 - (t**3) / 3
+            if use_first_option
+            else (t**5) / 5 - (t**4) / 2 + (t**3) / 3
+        )
+
+    def _calculate_new_delta(self, step: int) -> float:
+        # `step` should be 0-indexed
+        if step < self.delta_decay_delay:
+            return 0.0
+
+        step_diff = (step - self.delta_decay_delay) // self.delta_decay_steps
+        t = step_diff / self.delta_decay_rate
+        if t > 1:
+            t = 1
+
+        # Calculate the new delta value using the monotonic function
+        new_delta_val = self.func_g(t) / self.func_g(1)
+        return new_delta_val
+
+
+class DeltaDelayedMonitoringDecayScheduler(DeltaDelayedDecayScheduler):
+    """
+    This is the base scheduler where delta is only updated when the target
+    performance is reached. Caution: under this scheduler the delta might never
+    reach 1.
     """
 
     internal_target_performance: float
@@ -389,11 +476,10 @@ class DeltaDelayedMonitoringExponentialDecayScheduler(
 
         if step == self.delta_decay_delay:
             self.internal_target_performance = current_performance
-
         if (
             order == "ascending"
             and current_performance - self.internal_target_performance
-            < self.performance_offset
+            < -self.performance_offset
         ):
             # If the current performance is less than the target performance
             # then don't update delta
@@ -401,7 +487,7 @@ class DeltaDelayedMonitoringExponentialDecayScheduler(
         if (
             order == "descending"
             and current_performance - self.internal_target_performance
-            > self.performance_offset
+            > -self.performance_offset
         ):
             # If the current performance is greater than the target performance
             # then don't update delta
@@ -411,8 +497,57 @@ class DeltaDelayedMonitoringExponentialDecayScheduler(
             # delta
             return old_delta_val, old_delta_val
 
-        new_delta_val = self.initial_delta * (
-            self.delta_decay_rate ** (step + 1)
-        )
+        new_delta_val = self._calculate_new_delta(step)
         new_delta_val = 1 if new_delta_val > 1 else new_delta_val
+        # Since we update the delta, we also update the target performance
+        # to be the current performance
+        self.internal_target_performance = current_performance
         return new_delta_val, old_delta_val
+
+    def _calculate_new_delta(self, step: int) -> float:
+        raise NotImplementedError
+
+
+class DeltaDelayedMonitoringExponentialDecayScheduler(
+    DeltaDelayedMonitoringDecayScheduler
+):
+    """
+    This scheduler implements the base DeltaDelayedMonitoringDecayScheduler,
+    with the delta calculation based on the exponential calculation.
+    """
+
+    def _calculate_new_delta(self, step: int) -> float:
+        return self.initial_delta * (self.delta_decay_rate ** (step + 1))
+
+
+class DeltaDelayedMonitoringLinearDecayScheduler(
+    DeltaDelayedMonitoringDecayScheduler
+):
+    """
+    This scheduler implements the base DeltaDelayedMonitoringDecayScheduler,
+    with the delta calculation based on the linear calculation.
+    """
+
+    def __init__(
+        self,
+        initial_delta: float,
+        delta_decay_delay: int,
+        delta_decay_steps: int,  # unused
+        delta_decay_rate: float,
+        target_module_type: str,
+        performance_offset: float = 1e-10,
+    ):
+        super().__init__(
+            initial_delta,
+            delta_decay_delay,
+            delta_decay_steps,
+            delta_decay_rate,
+            target_module_type,
+            performance_offset,
+        )
+        assert (
+            0 < delta_decay_rate < 1
+        ), "Decay rate should be between 0 and 1 for the linear scheduler."
+
+    def _calculate_new_delta(self, step: int) -> float:
+        return self.initial_delta + step * self.delta_decay_rate

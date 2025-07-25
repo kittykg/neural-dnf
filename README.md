@@ -1,7 +1,7 @@
 # Neural DNF-based Models
 
-A collection of neural DNF-based models based on semi-symbolic layers introduced
-in the pix2rule [1].
+A collection of neural DNF-based models based on semi-symbolic layers first
+introduced in the pix2rule [1].
 
 ## Models
 
@@ -22,7 +22,18 @@ function `mutex_tanh(...)` in `neural_ndnf/common.py`). The semi-symbolic layer
 with mutex-tanh activation is implemented as class `SemiSymbolicMutexTanh` in
 `neural_ndnf/semi_symbolic.py` .
 
+## Post-training Processing
+
+The post-training processing that extracts logical interpretation from a trained
+neural DNF-based model is implemented in `neural_ndnf/post_training.py`.
+
+The novel disentanglement method described in our paper 'Disentangling Neural
+Disjunctive Normal Form Models' [4] is implemented in the function
+`split_entangled_conjunction(...)` in `neural_ndnf/post_training.py`.
+
 ## How to Use
+
+### Install
 
 Install this package in editable mode:
 
@@ -32,7 +43,7 @@ pip install -e . --config-settings editable_mode=strict
 
 The config setting flag is used for resolving Pylance's issue with importing.
 
-## Unit testing
+### Unit testing
 
 To run the unit test, run the following command in the root directory of the
 project:
@@ -62,4 +73,8 @@ Retrieved from https://ceur-ws.org/Vol-3433/paper12.pdf
 Neuro-symbolic Approach for Learning Interpretable and Editable Policies. In
 Proc. of the 24th International Conference on Autonomous Agents and Multiagent
 Systems (AAMAS 2025), Detroit, Michigan, USA, May 19 – 23, 2025, IFAAMAS.
-Arxiv pre-print: https://arxiv.org/abs/2501.03888
+https://dl.acm.org/doi/10.5555/3709347.3743538
+
+[4] Kexin Gu Baugh, Vincent Perreault, Matthew Baugh, Luke Dickens, Katsumi
+Inoue, and Alessandra Russo. 2025. Disentangling Neural Disjunctive Normal Form
+Models. Coming in NeSy 2025. Arxiv pre-print: https://arxiv.org/abs/2507.10546

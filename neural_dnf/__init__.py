@@ -1,4 +1,4 @@
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 
 from .semi_symbolic import (
     SemiSymbolic,
@@ -11,12 +11,21 @@ from .neural_dnf import (
     NeuralDNFMutexTanh,
     NeuralDNFFullMutexTanh,
 )
-from .utils import DeltaDelayedExponentialDecayScheduler
+from .utils import (
+    DeltaDelayedExponentialDecayScheduler,
+    DeltaDelayedOffsetExponentialDecayScheduler,
+    DeltaDelayedLinearDecayScheduler,
+    DeltaDelayedMonotonicFunctionScheduler,
+    DeltaDelayedMonitoringExponentialDecayScheduler,
+    DeltaDelayedMonitoringLinearDecayScheduler,
+)
 from .post_training import (
     prune_neural_dnf,
     thresholding,
     apply_threshold,
+    split_entangled_conjunction,
     extract_asp_rules,
+    condense_neural_dnf_model,
 )
 
 __all__ = [
@@ -28,8 +37,15 @@ __all__ = [
     "NeuralDNFMutexTanh",
     "NeuralDNFFullMutexTanh",
     "DeltaDelayedExponentialDecayScheduler",
+    "DeltaDelayedOffsetExponentialDecayScheduler",
+    "DeltaDelayedLinearDecayScheduler",
+    "DeltaDelayedMonotonicFunctionScheduler",
+    "DeltaDelayedMonitoringExponentialDecayScheduler",
+    "DeltaDelayedMonitoringLinearDecayScheduler",
     "prune_neural_dnf",
     "thresholding",
     "apply_threshold",
+    "split_entangled_conjunction",
     "extract_asp_rules",
+    "condense_neural_dnf_model",
 ]
